@@ -7,7 +7,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 
-from stock_data import get_merged_data, get_market_index, get_stock_history
+from stock_data import get_merged_data, get_market_index, get_stock_history, get_fund_flow
 from strategies import STRATEGIES, run_strategy, custom_screen
 from backtest import backtest_portfolio, calc_metrics
 
@@ -33,7 +33,7 @@ def is_dark_theme():
             return luminance < 128
         except ValueError:
             pass
-    return True  # 默认暗色
+    return False  # 默认亮色
 
 
 # 根据主题选择配色
@@ -60,24 +60,25 @@ if is_dark_theme():
     }
 else:
     C = {
-        "bg": "#f8fafc",
-        "bg2": "#e2e8f0",
+        "bg": "#f5f7fa",
+        "bg2": "#eef2f7",
         "card": "#ffffff",
-        "card_alt": "#f1f5f9",
-        "text": "#0f172a",
+        "card_alt": "#f8fafc",
+        "text": "#1e293b",
         "text_dim": "#64748b",
-        "border": "rgba(0,0,0,0.1)",
-        "border_strong": "rgba(0,0,0,0.2)",
-        "primary": "#3b82f6",
+        "border": "rgba(15,23,42,0.06)",
+        "border_strong": "rgba(15,23,42,0.12)",
+        "primary": "#1d4ed8",
+        "primary_light": "#dbeafe",
         "up": "#dc2626",
         "down": "#16a34a",
-        "shadow": "rgba(0,0,0,0.08)",
-        "shadow_hover": "rgba(0,0,0,0.12)",
-        "pos_bg": "rgba(220,38,38,0.1)",
-        "neg_bg": "rgba(22,163,74,0.1)",
-        "hover_bg": "rgba(59,130,246,0.08)",
-        "scroll_track": "rgba(0,0,0,0.05)",
-        "scroll_thumb": "rgba(0,0,0,0.2)",
+        "shadow": "rgba(15,23,42,0.06)",
+        "shadow_hover": "rgba(15,23,42,0.12)",
+        "pos_bg": "rgba(220,38,38,0.08)",
+        "neg_bg": "rgba(22,163,74,0.08)",
+        "hover_bg": "rgba(29,78,216,0.06)",
+        "scroll_track": "rgba(15,23,42,0.04)",
+        "scroll_thumb": "rgba(15,23,42,0.15)",
     }
 
 # ========== 全局样式：根据主题注入实际颜色值 ==========
@@ -86,7 +87,7 @@ st.markdown(
     <style>
     /* ===== 全局背景与排版 ===== */
     body, .stApp {{
-        background: linear-gradient(160deg, {C['bg']} 0%, {C['bg2']} 45%, {C['bg']} 100%) !important;
+        background: linear-gradient(180deg, {C['bg']} 0%, {C['bg2']} 100%) !important;
         background-attachment: fixed !important;
     }}
     .block-container {{
@@ -112,13 +113,12 @@ st.markdown(
         border-radius: 14px;
         padding: 16px 18px;
         text-align: center;
-        backdrop-filter: blur(8px);
-        box-shadow: 0 4px 20px {C['shadow']}, inset 0 1px 0 rgba(255,255,255,0.04);
+        box-shadow: 0 1px 3px {C['shadow']}, 0 1px 2px {C['shadow']};
         transition: transform 0.2s, box-shadow 0.2s;
     }}
     .metric-card:hover {{
         transform: translateY(-2px);
-        box-shadow: 0 8px 28px {C['shadow_hover']}, inset 0 1px 0 rgba(255,255,255,0.06);
+        box-shadow: 0 10px 25px {C['shadow_hover']}, 0 4px 10px {C['shadow']};
     }}
     .metric-card .label {{
         color: {C['text_dim']}; font-size: 0.82rem; margin-bottom: 4px;
@@ -135,10 +135,10 @@ st.markdown(
         border: 1px solid {C['border']};
         border-radius: 12px;
         padding: 12px 16px;
-        backdrop-filter: blur(6px);
-        transition: border-color 0.2s;
+        box-shadow: 0 1px 2px {C['shadow']};
+        transition: border-color 0.2s, box-shadow 0.2s;
     }}
-    .info-card:hover {{ border-color: {C['primary']}; }}
+    .info-card:hover {{ border-color: {C['primary']}; box-shadow: 0 4px 12px {C['shadow_hover']}; }}
     .info-card .label {{ color: {C['text_dim']}; font-size: 0.78rem; letter-spacing: 0.04em; }}
     .info-card .value {{
         font-size: 1.35rem; font-weight: 700; color: {C['text']};
@@ -153,7 +153,7 @@ st.markdown(
         transition: all 0.2s !important;
     }}
     .stButton > button[kind="primary"] {{
-        background: linear-gradient(135deg, {C['primary']}, #2563eb) !important;
+        background: linear-gradient(135deg, {C['primary']}, #3b82f6) !important;
         border: none !important;
         box-shadow: 0 4px 14px rgba(59,130,246,0.35) !important;
     }}
@@ -163,14 +163,59 @@ st.markdown(
     }}
 
     /* ===== 输入框 / 下拉框 / 滑块 主题适配 ===== */
-    .stTextInput input, .stSelectbox [data-baseweb="select"] > div,
-    .stNumberInput input {{
-        background: {C['card']} !important;
-        border-color: {C['border_strong']} !important;
-        color: {C['text']} !important;
+    /* 下拉框：边框在 selectbox 容器的直接子 div 上 */
+    .stSelectbox > div,
+    .stMultiSelect > div,
+    .stDateInput > div,
+    .stSelectbox [data-baseweb="select"],
+    .stSelectbox [data-baseweb="select"] > div,
+    .stMultiSelect [data-baseweb="select"],
+    .stMultiSelect [data-baseweb="select"] > div,
+    .stDateInput [data-baseweb="select"],
+    .stDateInput [data-baseweb="select"] > div {{
+        border: 1.5px solid #94a3b8 !important;
+        background: #ffffff !important;
         border-radius: 10px !important;
+        box-shadow: none !important;
+        transition: border-color 0.2s, box-shadow 0.2s !important;
     }}
-    .stSlider > div > div > div {{ background: rgba(59,130,246,0.3) !important; }}
+    .stSelectbox [data-baseweb="select"]:focus-within,
+    .stMultiSelect [data-baseweb="select"]:focus-within,
+    .stDateInput [data-baseweb="select"]:focus-within {{
+        border-color: {C['primary']} !important;
+        box-shadow: 0 0 0 3px rgba(29,78,216,0.12) !important;
+    }}
+    /* 输入框边框 */
+    .stTextInput input,
+    .stNumberInput input,
+    .stDateInput input,
+    .stTextArea textarea {{
+        border: 1.5px solid #94a3b8 !important;
+        background: #ffffff !important;
+        border-radius: 10px !important;
+        color: {C['text']} !important;
+        transition: border-color 0.2s, box-shadow 0.2s !important;
+    }}
+    .stTextInput input:focus,
+    .stNumberInput input:focus,
+    .stDateInput input:focus,
+    .stTextArea textarea:focus {{
+        border-color: {C['primary']} !important;
+        box-shadow: 0 0 0 3px rgba(29,78,216,0.12) !important;
+        outline: none !important;
+    }}
+    /* number_input 整体容器边框 */
+    .stNumberInput [data-baseweb="input"] {{
+        border: 1.5px solid #94a3b8 !important;
+        border-radius: 10px !important;
+        overflow: hidden;
+    }}
+    /* 下拉框箭头颜色 */
+    .stSelectbox [data-baseweb="select"] svg,
+    .stDateInput [data-baseweb="select"] svg {{
+        color: #64748b !important;
+    }}
+    .stSlider > div > div > div {{ background: rgba(29,78,216,0.3) !important; }}
     .stSlider [data-testid="stTickBar"] {{ color: {C['text_dim']}; }}
 
     /* ===== 标题与分隔线 ===== */
@@ -398,6 +443,20 @@ with col_result:
                 if kdf.empty:
                     st.warning("暂无K线数据。")
                 else:
+                    # 日期选择器（分时和年K不支持）
+                    date_filtered = False
+                    if period not in ("min", "year") and "date" in kdf.columns:
+                        kdf["date"] = pd.to_datetime(kdf["date"])
+                        min_d = kdf["date"].min().date()
+                        max_d = kdf["date"].max().date()
+                        dcol1, dcol2 = st.columns([1, 1])
+                        with dcol1:
+                            start_date = st.date_input("起始日期", min_d, min_value=min_d, max_value=max_d, key=f"sd_{sel_code}_{period}")
+                        with dcol2:
+                            end_date = st.date_input("结束日期", max_d, min_value=min_d, max_value=max_d, key=f"ed_{sel_code}_{period}")
+                        kdf = kdf[(kdf["date"].dt.date >= start_date) & (kdf["date"].dt.date <= end_date)].copy()
+                        date_filtered = True
+
                     # 根据 Streamlit 主题选择图表配色
                     if is_dark_theme():
                         chart_bg = "rgba(15,23,42,0.4)"
@@ -433,6 +492,7 @@ with col_result:
                             height=450, margin=dict(l=10, r=10, t=50, b=10),
                             hovermode="x unified", **theme_layout,
                         )
+                        st.plotly_chart(fig, width="stretch")
                     else:
                         # K线图：蜡烛图
                         fig = go.Figure(data=[go.Candlestick(
@@ -461,7 +521,129 @@ with col_result:
                             xaxis_rangeslider_visible=False,
                             hovermode="x unified", **theme_layout,
                         )
-                    st.plotly_chart(fig, width="stretch")
+                        st.plotly_chart(fig, width="stretch")
+
+                        # ========== 资金流向（主力/超大单/大单/中单/小单净流入）==========
+                        with st.spinner("正在加载资金流向数据…"):
+                            fdf = get_fund_flow(sel_code, period=period)
+
+                        if fdf.empty:
+                            st.info("暂无资金流向数据。")
+                        else:
+                            # 按相同日期范围过滤
+                            if date_filtered:
+                                fdf["date"] = pd.to_datetime(fdf["date"])
+                                fdf = fdf[(fdf["date"].dt.date >= start_date) &
+                                          (fdf["date"].dt.date <= end_date)].copy()
+
+                            # 金额转换为亿元
+                            for col in ["main_net", "super_large_net", "large_net",
+                                        "medium_net", "small_net"]:
+                                fdf[col + "_yi"] = fdf[col] / 1e8
+
+                            st.markdown("**💰 资金流向（与K线同周期）**")
+                            st.caption("主力=超大单+大单；红柱净流入，绿柱净流出")
+
+                            # 主力净流入柱状图
+                            main_colors = ["#f87171" if v >= 0 else "#4ade80"
+                                           for v in fdf["main_net_yi"]]
+                            fig_ff = go.Figure()
+                            fig_ff.add_trace(go.Bar(
+                                x=fdf["date"], y=fdf["main_net_yi"],
+                                name="主力净流入(亿)",
+                                marker_color=main_colors, marker_opacity=0.85,
+                            ))
+                            # 叠加超大单/大单/中单/小单堆叠
+                            fig_ff.add_trace(go.Bar(x=fdf["date"], y=fdf["super_large_net_yi"],
+                                                    name="超大单(亿)", marker_color="#ef4444", opacity=0.6))
+                            fig_ff.add_trace(go.Bar(x=fdf["date"], y=fdf["large_net_yi"],
+                                                    name="大单(亿)", marker_color="#f97316", opacity=0.6))
+                            fig_ff.add_trace(go.Bar(x=fdf["date"], y=fdf["medium_net_yi"],
+                                                    name="中单(亿)", marker_color="#3b82f6", opacity=0.6))
+                            fig_ff.add_trace(go.Bar(x=fdf["date"], y=fdf["small_net_yi"],
+                                                    name="小单(亿)", marker_color="#a78bfa", opacity=0.6))
+                            fig_ff.update_layout(
+                                barmode="relative",
+                                title=dict(text=f"{sel_name} 资金流向", font=dict(size=14, color=title_color)),
+                                yaxis_title="金额(亿元)",
+                                height=380, margin=dict(l=10, r=10, t=40, b=10),
+                                xaxis_rangeslider_visible=False,
+                                hovermode="x unified", **theme_layout,
+                                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                            )
+                            st.plotly_chart(fig_ff, width="stretch")
+
+                            # ========== 主力动向分析 ==========
+                            st.markdown("**🧠 主力动向分析**")
+                            recent = fdf.tail(10)
+                            if len(recent) >= 3:
+                                # 最近一期主力净流入
+                                latest = recent.iloc[-1]
+                                latest_main_yi = latest["main_net_yi"]
+                                latest_main_pct = latest["main_pct"]
+                                # 近5期主力净流入合计
+                                last5 = fdf.tail(5)
+                                last5_main_sum = last5["main_net_yi"].sum()
+                                # 主力净流入与股价背离判断
+                                last5_price_chg = float(latest["close"]) - float(last5.iloc[0]["close"])
+                                last5_main_pos = last5_main_sum > 0
+
+                                # 超大单净流入
+                                super_large_yi = latest.get("super_large_net", 0) / 1e8
+
+                                # 生成建议
+                                suggestions = []
+                                # 1. 当日/当期主力方向
+                                if latest_main_yi > 0.5:
+                                    suggestions.append(("🟢 主力大幅净流入", f"当期主力净流入 {latest_main_yi:.2f} 亿元，净占比 {latest_main_pct:.1f}%，主力做多意愿强。"))
+                                elif latest_main_yi > 0:
+                                    suggestions.append(("🟢 主力小幅净流入", f"当期主力净流入 {latest_main_yi:.2f} 亿元，主力温和吸筹。"))
+                                elif latest_main_yi < -0.5:
+                                    suggestions.append(("🔴 主力大幅净流出", f"当期主力净流出 {abs(latest_main_yi):.2f} 亿元，净占比 {latest_main_pct:.1f}%，主力出逃明显。"))
+                                elif latest_main_yi < 0:
+                                    suggestions.append(("🔴 主力小幅净流出", f"当期主力净流出 {abs(latest_main_yi):.2f} 亿元，主力有减仓迹象。"))
+                                else:
+                                    suggestions.append(("⚪ 主力观望", f"当期主力资金基本平衡，方向不明。"))
+
+                                # 2. 近5期趋势
+                                if last5_main_sum > 2:
+                                    suggestions.append(("🟢 近5期主力持续流入", f"近5期主力合计净流入 {last5_main_sum:.2f} 亿元，中期资金面偏多。"))
+                                elif last5_main_sum < -2:
+                                    suggestions.append(("🔴 近5期主力持续流出", f"近5期主力合计净流出 {abs(last5_main_sum):.2f} 亿元，中期资金面偏空。"))
+
+                                # 3. 价量背离
+                                if last5_price_chg < 0 and last5_main_pos:
+                                    suggestions.append(("💡 价跌量增（主力吸筹）", "股价下跌但主力资金净流入，可能为主力低位吸筹，关注后续企稳信号。"))
+                                elif last5_price_chg > 0 and not last5_main_pos:
+                                    suggestions.append(("⚠️ 价涨量缩（主力出货）", "股价上涨但主力资金净流出，可能为主力拉高出货，警惕回调风险。"))
+
+                                # 4. 超大单动向
+                                if super_large_yi > 0.5:
+                                    suggestions.append(("🟢 超大单大幅买入", f"超大单净流入 {super_large_yi:.2f} 亿元，机构资金积极介入。"))
+                                elif super_large_yi < -0.5:
+                                    suggestions.append(("🔴 超大单大幅卖出", f"超大单净流出 {abs(super_large_yi):.2f} 亿元，机构资金大幅撤离。"))
+
+                                # 综合建议
+                                score = 0
+                                if latest_main_yi > 0: score += 1
+                                if last5_main_sum > 0: score += 1
+                                if last5_price_chg < 0 and last5_main_pos: score += 1
+                                if last5_price_chg > 0 and not last5_main_pos: score -= 1
+                                if latest_main_yi < 0: score -= 1
+                                if last5_main_sum < 0: score -= 1
+
+                                if score >= 2:
+                                    advice = "🟢 偏多：主力资金持续流入，可关注逢低布局机会。"
+                                elif score <= -2:
+                                    advice = "🔴 偏空：主力资金持续流出，建议观望或减仓。"
+                                else:
+                                    advice = "🟡 中性：主力资金方向不明，建议观望等待明确信号。"
+
+                                for title, desc in suggestions:
+                                    st.markdown(f"**{title}**：{desc}")
+                                st.markdown(f"---\n**综合建议**：{advice}")
+                            else:
+                                st.info("资金流向数据不足，无法生成主力分析。")
 
             # ========== 回测 ==========
             st.divider()

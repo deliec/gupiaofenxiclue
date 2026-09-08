@@ -289,6 +289,106 @@ def get_stock_history(code: str, period: str = "day", adjust: str = "qfq") -> pd
         return pd.DataFrame()
 
 
+# ========== 个股资金流向（新浪财经）==========
+@st.cache_data(show_spinner=False, ttl=60 * 30)
+def get_fund_flow(code: str, period: str = "day") -> pd.DataFrame:
+    """获取个股资金流向历史数据（新浪财经接口）
+    period: day / week / month / year
+    返回列: date, close, pct_chg, main_net, super_large_net, large_net,
+            medium_net, small_net, main_pct
+    金额单位：元
+    """
+    market = "sh" if code.startswith("6") else "sz"
+    daima = f"{market}{code}"
+    url = "http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/MoneyFlow.ssl_qsfx_lscjfb"
+    headers = {
+        "User-Agent": _UA,
+        "Referer": "https://finance.sina.com.cn/",
+    }
+    all_rows = []
+    # 分页获取，每页500条，最多取4页（约2000条/8年）
+    for page in range(1, 5):
+        params = {"page": page, "num": 500, "sort": "opendate",
+                  "asc": 0, "daima": daima}
+        try:
+            r = requests.get(url, params=params, timeout=15, headers=headers)
+            data = r.json()
+            if not data:
+                break
+            all_rows.extend(data)
+            if len(data) < 500:
+                break
+        except Exception:
+            break
+        time.sleep(0.3)
+
+    if not all_rows:
+        return pd.DataFrame()
+
+    rows = []
+    for d in all_rows:
+        try:
+            super_large_net = float(d.get("r0_net", 0) or 0)
+            large_net = float(d.get("r1_net", 0) or 0)
+            medium_net = float(d.get("r2_net", 0) or 0)
+            small_net = float(d.get("r3_net", 0) or 0)
+            main_net = super_large_net + large_net
+            # 主力净占比 = 主力净流入 / (主力+中单+小单 绝对值之和) 近似
+            total_abs = abs(super_large_net) + abs(large_net) + abs(medium_net) + abs(small_net)
+            main_pct = (main_net / total_abs * 100) if total_abs > 0 else 0
+            rows.append({
+                "date": d.get("opendate", ""),
+                "close": float(d.get("trade", 0) or 0),
+                "pct_chg": float(d.get("changeratio", 0) or 0) * 100,
+                "main_net": main_net,
+                "super_large_net": super_large_net,
+                "large_net": large_net,
+                "medium_net": medium_net,
+                "small_net": small_net,
+                "main_pct": main_pct,
+            })
+        except (ValueError, TypeError):
+            continue
+
+    df = pd.DataFrame(rows)
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.dropna(subset=["date"]).sort_values("date").reset_index(drop=True)
+
+    # 周期重采样
+    if period == "day":
+        return df
+
+    df = df.set_index("date")
+    agg_dict = {
+        "close": "last",
+        "main_net": "sum", "super_large_net": "sum", "large_net": "sum",
+        "medium_net": "sum", "small_net": "sum",
+        "pct_chg": "sum",
+    }
+    if period == "week":
+        res = df.resample("W-FRI").agg(agg_dict).dropna(subset=["close"])
+    elif period == "month":
+        res = df.resample("ME").agg(agg_dict).dropna(subset=["close"])
+    elif period == "year":
+        res = df.resample("YE").agg(agg_dict).dropna(subset=["close"])
+        res = res.reset_index()
+        res["date"] = res["date"].dt.year
+        # 重算主力净占比
+        res["main_pct"] = 0.0
+        return res[["date", "close", "pct_chg", "main_net", "super_large_net",
+                    "large_net", "medium_net", "small_net", "main_pct"]]
+    else:
+        return df.reset_index()
+
+    res = res.reset_index()
+    # 重算主力净占比
+    total_abs = (res["super_large_net"].abs() + res["large_net"].abs() +
+                 res["medium_net"].abs() + res["small_net"].abs())
+    res["main_pct"] = res["main_net"] / total_abs.replace(0, 1) * 100
+    return res[["date", "close", "pct_chg", "main_net", "super_large_net",
+                "large_net", "medium_net", "small_net", "main_pct"]]
+
+
 def get_market_index() -> pd.DataFrame:
     """获取主要指数行情（腾讯源）"""
     index_map = {
